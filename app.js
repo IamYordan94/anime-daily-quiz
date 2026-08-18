@@ -211,16 +211,15 @@ function finish() {
     i < score ? '🟩' : '🟥'
   ).join(' ');
 
-  const lines = [
+  const verdict =
     score === total ? 'OTAKU SUPREME! All correct.' :
     score >= total - 2 ? 'So close. So painful.' :
     score >= Math.ceil(total / 2) ? 'Solid. But the weeb council is watching.' :
-    'The anime gods are disappointed.',
-  ];
+    'The anime gods are disappointed.';
 
   $('result-big').textContent = score + '/' + total;
   $('result-grid').textContent = grid;
-  $('result-line').textContent = lines[0];
+  $('result-line').textContent = verdict;
   $('chip-streak-result').textContent = '🔥 streak ' + streak;
   $('chip-streak').textContent = '🔥 streak ' + streak;
 
