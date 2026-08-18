@@ -1,6 +1,7 @@
 /* ═══════════════════════════════════════════════════════
    ANIME DAILY — game logic
-   daily-seeded quiz · streak · share card · rewarded hints
+   daily-seeded quiz · speed bonus · bonus round · badges
+   streaks · share card · rewarded hints · sfx
    ═══════════════════════════════════════════════════════ */
 
 'use strict';
@@ -17,7 +18,6 @@ function mulberry32(a) {
 }
 
 function amsDateString(d) {
-  // Amsterdam wall-clock date, YYYY-MM-DD (quiz flips at NL midnight)
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Amsterdam' }).format(d);
 }
 
@@ -35,28 +35,43 @@ function hashStr(s) {
   return h >>> 0;
 }
 
+function shuffle(arr, rnd) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 /* ── daily puzzle selection ──────────────────────────── */
 
 const TIER_RAMP = [1, 1, 2, 2, 3, 3, 4, 4, 5, 5]; // two per tier, easy → hard
+const BONUS_TIERS = [2, 3, 4];
+const MAIN_TIME = 12;   // seconds per question (main round)
+const BONUS_TIME = 7;   // seconds per question (bonus round)
+
+function makePuzzle(q, order) {
+  return {
+    q: q.q, hint: q.hint, tier: q.tier,
+    options: order.map(i => q.options[i]),
+    answer: order.indexOf(q.answer),
+  };
+}
 
 function pickDailyPuzzle(questions, dateStr) {
   const rnd = mulberry32(hashStr('anime-daily:' + dateStr));
-  const out = [];
-  for (const tier of TIER_RAMP) {
+  return TIER_RAMP.map(tier => {
     const pool = questions.filter(q => q.tier === tier);
-    if (!pool.length) continue;
     const q = pool[Math.floor(rnd() * pool.length)];
-    // shuffle options (track correct answer)
-    const order = [0, 1, 2, 3].sort(() => rnd() - 0.5);
-    out.push({
-      q: q.q,
-      hint: q.hint,
-      tier: q.tier,
-      options: order.map(i => q.options[i]),
-      answer: order.indexOf(q.answer),
-    });
-  }
-  return out;
+    return makePuzzle(q, shuffle([0, 1, 2, 3], rnd));
+  });
+}
+
+function pickBonus(questions, dateStr) {
+  const rnd = mulberry32(hashStr('anime-daily-bonus:' + dateStr));
+  const pool = shuffle(questions.filter(q => BONUS_TIERS.includes(q.tier)), rnd);
+  return pool.slice(0, 3).map(q => makePuzzle(q, shuffle([0, 1, 2, 3], rnd)));
 }
 
 /* ── storage ─────────────────────────────────────────── */
@@ -65,7 +80,11 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
 };
-const K = { streak: 'animeDaily.streak', last: 'animeDaily.lastDate', scores: 'animeDaily.scores' };
+const K = {
+  streak: 'animeDaily.streak', last: 'animeDaily.lastDate',
+  scores: 'animeDaily.scores', points: 'animeDaily.points',
+  badges: 'animeDaily.badges', sound: 'animeDaily.sound',
+};
 
 /* ── telegram ────────────────────────────────────────── */
 
@@ -79,6 +98,43 @@ if (TG) {
 }
 function haptic(type) { if (TG && TG.HapticFeedback) TG.HapticFeedback.impactOccurred(type || 'light'); }
 
+/* ── sound (WebAudio synth, lazy init) ───────────────── */
+
+let SOUND_ON = store.get(K.sound, true);
+let audioCtx = null;
+function ac() {
+  if (!audioCtx) {
+    const Ctor = window.AudioContext || window.webkitAudioContext;
+    if (typeof Ctor === 'undefined') return null;
+    audioCtx = new Ctor();
+  }
+  return audioCtx;
+}
+function tone(freq, dur, type, gain, when) {
+  const ctx = ac();
+  if (!ctx) return;
+  const t0 = ctx.currentTime + (when || 0);
+  const osc = ctx.createOscillator();
+  const g = ctx.createGain();
+  osc.type = type || 'square';
+  osc.frequency.value = freq;
+  g.gain.setValueAtTime(gain || 0.08, t0);
+  g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
+  osc.connect(g); g.connect(ctx.destination);
+  osc.start(t0); osc.stop(t0 + dur + 0.02);
+}
+function sfx(kind) {
+  if (!SOUND_ON) return;
+  try {
+    if (kind === 'correct') { tone(660, 0.09); tone(880, 0.12, 'square', 0.08, 0.09); }
+    else if (kind === 'wrong') { tone(160, 0.22, 'sawtooth', 0.1); }
+    else if (kind === 'click') { tone(440, 0.05, 'square', 0.05); }
+    else if (kind === 'hint') { tone(520, 0.08); tone(700, 0.1, 'square', 0.07, 0.08); }
+    else if (kind === 'bonus') { tone(523, 0.08); tone(659, 0.08, 'square', 0.07, 0.08); tone(784, 0.14, 'square', 0.08, 0.16); }
+    else if (kind === 'badge') { tone(392, 0.1); tone(523, 0.1, 'square', 0.08, 0.1); tone(659, 0.2, 'square', 0.09, 0.2); }
+  } catch {}
+}
+
 /* ── monetag adapter ───────────────────────────────────
    Rewarded ad = user watches ad → we reveal a hint.
    Until the Monetag tag is configured, the reward is granted
@@ -87,7 +143,6 @@ function haptic(type) { if (TG && TG.HapticFeedback) TG.HapticFeedback.impactOcc
 async function showRewardedAd() {
   const cfg = window.AD_CONFIG || {};
   if (cfg.MONETAG_TAG && cfg.MONETAG_SDK_URL && !window.__monetagLoaded) {
-    // load the SDK script Monetag provides for your Telegram Mini App
     await new Promise((resolve, reject) => {
       const s = document.createElement('script');
       s.src = cfg.MONETAG_SDK_URL;
@@ -103,18 +158,46 @@ async function showRewardedAd() {
   // add the app. Once the tag is in place, call it here and resolve
   // true only when the user finished the ad.
   //   e.g.  return await monetagRewarded.show();
-  // Until wired: grant the hint (test mode).
   return true;
+}
+
+/* ── badges ──────────────────────────────────────────── */
+
+const BADGES = [
+  { id: 'first',    icon: '🎌', name: 'FIRST QUIZ',   cond: s => s.daysPlayed >= 1 },
+  { id: 'streak3',  icon: '🔥', name: '3-DAY STREAK', cond: s => s.streak >= 3 },
+  { id: 'streak7',  icon: '⚡', name: '7-DAY STREAK', cond: s => s.streak >= 7 },
+  { id: 'perfect',  icon: '👑', name: 'PERFECT 10',   cond: s => s.perfect },
+  { id: 'speed',    icon: '🚀', name: 'SPEED DEMON',  cond: s => s.speedBonus >= 10 },
+  { id: 'days5',    icon: '🗓️', name: '5 DAYS PLAYED', cond: s => s.daysPlayed >= 5 },
+];
+
+function earnedBadges() { return store.get(K.badges, []); }
+
+function checkBadges(stats) {
+  const have = new Set(earnedBadges());
+  const fresh = [];
+  for (const b of BADGES) {
+    if (!have.has(b.id) && b.cond(stats)) { have.add(b.id); fresh.push(b); }
+  }
+  store.set(K.badges, [...have]);
+  return fresh;
 }
 
 /* ── app state ───────────────────────────────────────── */
 
-let puzzle = [];
+let mainPuzzle = [], bonusPuzzle = [];
+let mode = 'main';        // 'main' | 'bonus'
 let qIndex = 0;
-let score = 0;
+let score = 0;            // correct answers (main round)
+let speedBonus = 0;
+let bonusScore = 0;
 let answered = false;
 let hintUsed = [];
 let hintRevealed = false;
+let timerId = 0;
+let timeLeft = 0;
+let timeLimit = MAIN_TIME;
 
 const $ = id => document.getElementById(id);
 
@@ -125,15 +208,58 @@ function showScreen(name) {
   $('screen-' + name).classList.add('screen-active');
 }
 
+function currentPuzzle() { return mode === 'main' ? mainPuzzle : bonusPuzzle; }
+
+/* ── timer ───────────────────────────────────────────── */
+
+function stopTimer() { if (timerId) { clearInterval(timerId); timerId = 0; } }
+
+function startTimer() {
+  stopTimer();
+  timeLeft = timeLimit;
+  paintTimer();
+  timerId = setInterval(() => {
+    timeLeft--;
+    paintTimer();
+    if (timeLeft <= 0) onTimeout();
+  }, 1000);
+}
+
+function paintTimer() {
+  const bar = $('timer-bar');
+  const pct = Math.max(0, (timeLeft / timeLimit) * 100);
+  bar.style.width = pct + '%';
+  bar.classList.toggle('low', pct <= 30);
+  $('timer-label').textContent = timeLeft + 's';
+}
+
+function onTimeout() {
+  if (answered) return;
+  answered = true;
+  stopTimer();
+  const q = currentPuzzle()[qIndex];
+  document.querySelectorAll('.option').forEach((el, idx) => {
+    el.classList.add('locked');
+    if (idx === q.answer) el.classList.add('correct');
+    else el.classList.add('dim');
+  });
+  sfx('wrong'); haptic('heavy');
+  setTimeout(advance, 1100);
+}
+
 /* ── render: quiz question ───────────────────────────── */
 
 function renderQuestion() {
-  const q = puzzle[qIndex];
+  const q = currentPuzzle()[qIndex];
   answered = false;
   hintRevealed = hintUsed[qIndex];
-  $('chip-progress').textContent = 'Q ' + (qIndex + 1) + '/' + puzzle.length;
-  $('chip-score').textContent = '✓ ' + score;
-  $('q-tier').textContent = 'TIER ' + q.tier;
+  const isBonus = mode === 'bonus';
+  timeLimit = isBonus ? BONUS_TIME : MAIN_TIME;
+
+  $('chip-progress').textContent = (isBonus ? 'BONUS ' : 'Q ') + (qIndex + 1) + '/' + currentPuzzle().length;
+  $('chip-mode').textContent = isBonus ? '⚡ BONUS' : '🎌 ROUND 1';
+  $('chip-score').textContent = '✓ ' + score + (speedBonus ? ' +' + speedBonus + '⚡' : '');
+  $('q-tier').textContent = 'TIER ' + q.tier + (isBonus ? ' · ×2 POINTS' : ' · SPEED = BONUS ⚡');
   $('q-text').textContent = q.q;
   $('hint-text').hidden = !hintRevealed;
   $('hint-text').textContent = hintRevealed ? '🪄 ' + q.hint : '';
@@ -145,17 +271,37 @@ function renderQuestion() {
     const b = document.createElement('button');
     b.className = 'option';
     b.textContent = opt;
-    b.addEventListener('click', () => answer(i, b));
+    b.addEventListener('click', () => { sfx('click'); answer(i, b); });
     box.appendChild(b);
   });
+
+  startTimer();
+}
+
+function speedPoints() {
+  // remaining time fractions: fast = +2, ok = +1, slow = 0
+  const f = timeLeft / timeLimit;
+  return f >= 0.75 ? 2 : f >= 0.4 ? 1 : 0;
 }
 
 function answer(i, btnEl) {
   if (answered) return;
   answered = true;
-  const q = puzzle[qIndex];
+  stopTimer();
+  const q = currentPuzzle()[qIndex];
   const correct = i === q.answer;
-  if (correct) { score++; haptic('medium'); } else { haptic('heavy'); }
+
+  if (correct) {
+    if (mode === 'main') {
+      score++;
+      speedBonus += speedPoints();
+    } else {
+      bonusScore += 2;
+    }
+    sfx('correct'); haptic('medium');
+  } else {
+    sfx('wrong'); haptic('heavy');
+  }
 
   document.querySelectorAll('.option').forEach((el, idx) => {
     el.classList.add('locked');
@@ -163,13 +309,25 @@ function answer(i, btnEl) {
     else if (idx === i) el.classList.add('wrong');
     else el.classList.add('dim');
   });
-  $('chip-score').textContent = '✓ ' + score;
+  $('chip-score').textContent = '✓ ' + score + (speedBonus ? ' +' + speedBonus + '⚡' : '');
 
-  setTimeout(() => {
-    qIndex++;
-    if (qIndex < puzzle.length) renderQuestion();
-    else finish();
-  }, correct ? 650 : 1100);
+  setTimeout(advance, correct ? 650 : 1100);
+}
+
+function advance() {
+  qIndex++;
+  if (qIndex < currentPuzzle().length) { renderQuestion(); return; }
+  if (mode === 'main') {
+    mode = 'bonus';
+    qIndex = 0;
+    hintUsed = bonusPuzzle.map(() => false);
+    hintRevealed = false;
+    $('bonus-banner').hidden = false;
+    sfx('bonus');
+    setTimeout(() => { $('bonus-banner').hidden = true; renderQuestion(); }, 1200);
+  } else {
+    finish();
+  }
 }
 
 /* ── hint (rewarded ad) ──────────────────────────────── */
@@ -181,9 +339,9 @@ async function onHint() {
     hintRevealed = true;
     hintUsed[qIndex] = true;
     $('hint-text').hidden = false;
-    $('hint-text').textContent = '🪄 ' + puzzle[qIndex].hint;
+    $('hint-text').textContent = '🪄 ' + currentPuzzle()[qIndex].hint;
     $('btn-hint').disabled = true;
-    haptic('light');
+    sfx('hint'); haptic('light');
   }
 }
 
@@ -192,40 +350,64 @@ async function onHint() {
 function finish() {
   const dateStr = amsDateString(new Date());
   const scores = store.get(K.scores, {});
+  const points = store.get(K.points, {});
   const alreadyDone = !!scores[dateStr];
   scores[dateStr] = score;
+  points[dateStr] = score + speedBonus + bonusScore;
   store.set(K.scores, scores);
+  store.set(K.points, points);
 
   let streak = store.get(K.streak, 0);
   const last = store.get(K.last, '');
   if (!alreadyDone) {
-    if (last === dateStr) { /* same day replay */ }
-    else if (last === yesterdayStr(dateStr)) streak += 1;
-    else streak = 1;
+    streak = last === yesterdayStr(dateStr) ? streak + 1 : 1;
     store.set(K.streak, streak);
     store.set(K.last, dateStr);
   }
 
-  const total = puzzle.length;
-  const grid = Array.from({ length: total }, (_, i) =>
+  const total = score + speedBonus + bonusScore;
+  const grid = Array.from({ length: mainPuzzle.length }, (_, i) =>
     i < score ? '🟩' : '🟥'
   ).join(' ');
 
   const verdict =
-    score === total ? 'OTAKU SUPREME! All correct.' :
-    score >= total - 2 ? 'So close. So painful.' :
-    score >= Math.ceil(total / 2) ? 'Solid. But the weeb council is watching.' :
+    score === mainPuzzle.length ? 'OTAKU SUPREME! All correct.' :
+    score >= mainPuzzle.length - 2 ? 'So close. So painful.' :
+    score >= Math.ceil(mainPuzzle.length / 2) ? 'Solid. But the weeb council is watching.' :
     'The anime gods are disappointed.';
 
-  $('result-big').textContent = score + '/' + total;
+  const breakdown = [
+    score + '/' + mainPuzzle.length + ' correct',
+    speedBonus ? '+' + speedBonus + '⚡ speed' : '',
+    bonusScore ? '+' + bonusScore + '🔥 bonus' : '',
+  ].filter(Boolean).join(' · ');
+
+  $('result-big').textContent = total + ' pts';
   $('result-grid').textContent = grid;
   $('result-line').textContent = verdict;
+  $('result-breakdown').textContent = breakdown;
   $('chip-streak-result').textContent = '🔥 streak ' + streak;
   $('chip-streak').textContent = '🔥 streak ' + streak;
 
+  // badges
+  const fresh = checkBadges({
+    daysPlayed: Object.keys(scores).length,
+    streak,
+    perfect: score === mainPuzzle.length,
+    speedBonus,
+  });
+  if (fresh.length) {
+    $('result-badges').textContent = 'NEW BADGE: ' + fresh.map(b => b.icon + ' ' + b.name).join(' · ');
+    sfx('badge');
+  } else {
+    $('result-badges').textContent = '';
+  }
+  renderBadges();
+
+  const extra = (speedBonus || bonusScore) ? '\n' + breakdown + ' = ' + total + ' pts' : '';
   window.__shareText = [
     '🎌 ANIME DAILY — ' + dateStr,
-    grid + '  ' + score + '/' + total,
+    grid + '  ' + score + '/' + mainPuzzle.length + extra,
     'Play: ' + (TG ? 't.me/' + (window.AD_CONFIG.BOT_USERNAME || '') : location.origin),
   ].join('\n');
 
@@ -247,23 +429,53 @@ function tickCountdown() {
   setTimeout(tickCountdown, 60000);
 }
 
+/* ── badges row (home) ───────────────────────────────── */
+
+function renderBadges() {
+  const have = new Set(earnedBadges());
+  const row = $('badges-row');
+  row.innerHTML = '';
+  for (const b of BADGES) {
+    const chip = document.createElement('span');
+    chip.className = 'badge-chip' + (have.has(b.id) ? '' : ' locked');
+    chip.title = b.name;
+    chip.textContent = have.has(b.id) ? b.icon + ' ' + b.name : '❓ ' + b.name;
+    row.appendChild(chip);
+  }
+}
+
 /* ── home init ───────────────────────────────────────── */
 
 function initHome() {
   const dateStr = amsDateString(new Date());
   $('chip-today').textContent = '📅 ' + dateStr;
   $('chip-streak').textContent = '🔥 streak ' + store.get(K.streak, 0);
-  const scores = store.get(K.scores, {});
-  $('already-done').hidden = !scores[dateStr];
+  $('already-done').hidden = !store.get(K.scores, {})[dateStr];
   $('tg-link').href = 'https://t.me/' + (window.AD_CONFIG.BOT_USERNAME || '');
+  $('btn-sound').textContent = SOUND_ON ? '🔊' : '🔇';
+  renderBadges();
 }
+
+function toggleSound() {
+  SOUND_ON = !SOUND_ON;
+  store.set(K.sound, SOUND_ON);
+  $('btn-sound').textContent = SOUND_ON ? '🔊' : '🔇';
+  if (SOUND_ON) sfx('click');
+}
+
+/* ── start ───────────────────────────────────────────── */
+
+let QUESTIONS = [];
 
 function startQuiz() {
   if (!QUESTIONS.length) return;
   const dateStr = amsDateString(new Date());
-  puzzle = pickDailyPuzzle(QUESTIONS, dateStr);
-  qIndex = 0; score = 0; answered = false;
-  hintUsed = puzzle.map(() => false); hintRevealed = false;
+  mainPuzzle = pickDailyPuzzle(QUESTIONS, dateStr);
+  bonusPuzzle = pickBonus(QUESTIONS, dateStr);
+  mode = 'main'; qIndex = 0;
+  score = 0; speedBonus = 0; bonusScore = 0; answered = false;
+  hintUsed = mainPuzzle.map(() => false); hintRevealed = false;
+  $('bonus-banner').hidden = true;
   showScreen('quiz');
   renderQuestion();
 }
@@ -286,8 +498,6 @@ async function onCopy() {
 
 /* ── wire it up ──────────────────────────────────────── */
 
-let QUESTIONS = [];
-
 document.addEventListener('DOMContentLoaded', () => {
   fetch('data/questions.json')
     .then(r => r.json())
@@ -299,5 +509,6 @@ document.addEventListener('DOMContentLoaded', () => {
       $('btn-hint').addEventListener('click', onHint);
       $('btn-copy').addEventListener('click', onCopy);
       $('btn-replay').addEventListener('click', startQuiz);
+      $('btn-sound').addEventListener('click', toggleSound);
     });
 });

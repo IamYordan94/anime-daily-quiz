@@ -15,6 +15,7 @@ Built for the Monetag Telegram Mini App monetization pipeline.
 - Deployed on Vercel; Telegram opens it as a Mini App via a bot's menu button
 - Daily puzzle is **deterministic** — seeded by the Amsterdam date (`hashStr('anime-daily:' + date)`)
 - 150 questions, 5 difficulty tiers, 30 per tier
+- **Gameplay:** 10 questions/day (2 per tier) + 3-question bonus round (×2 pts), speed timer with bonus points (12s/7s), streaks, sticker badges, sound effects
 - Streak + score history in `localStorage` (per device)
 - Share card: emoji grid (🟩/🟥) + score, copy to clipboard
 - Hints are **rewarded**: 1 hint per question → `showRewardedAd()` in `app.js`

@@ -33,7 +33,9 @@
         <div class="streak-row">
           <span class="chip" id="chip-streak">🔥 streak 0</span>
           <span class="chip" id="chip-today">📅 today: loading…</span>
+          <button class="btn btn-sound" id="btn-sound" aria-label="toggle sound">🔊</button>
         </div>
+        <div class="badges-row" id="badges-row"></div>
         <button class="btn btn-big" id="btn-start">START TODAY'S QUIZ →</button>
         <p class="fine-print" id="already-done" hidden>You already played today — replay for fun, streak won't double-count.</p>
       </div>
@@ -43,10 +45,15 @@
     <!-- ══════════ SCREEN: QUIZ ══════════ -->
     <section class="screen" id="screen-quiz">
       <div class="quiz-top">
-        <span class="chip" id="chip-progress">Q 1/5</span>
+        <span class="chip" id="chip-mode">🎌 ROUND 1</span>
+        <span class="chip" id="chip-progress">Q 1/10</span>
         <span class="chip chip-accent" id="chip-score">✓ 0</span>
       </div>
       <div class="card q-card">
+        <div class="timer-wrap">
+          <div class="timer-bar" id="timer-bar"></div>
+        </div>
+        <div class="timer-label" id="timer-label">12s</div>
         <div class="q-tier" id="q-tier">TIER 1</div>
         <div class="q-text" id="q-text">Question…</div>
       </div>
@@ -57,12 +64,22 @@
       </div>
     </section>
 
+    <!-- ══════════ BONUS BANNER ══════════ -->
+    <div class="bonus-banner" id="bonus-banner" hidden>
+      <div class="bonus-banner-inner">
+        ⚡ BONUS ROUND ⚡<br />
+        <span>3 rapid-fire questions · ×2 points</span>
+      </div>
+    </div>
+
     <!-- ══════════ SCREEN: RESULT ══════════ -->
     <section class="screen" id="screen-result">
       <div class="card result-card">
         <div class="result-big" id="result-big">3/5</div>
         <div class="result-grid" id="result-grid"></div>
         <div class="result-line" id="result-line">Not bad…</div>
+        <div class="result-breakdown" id="result-breakdown"></div>
+        <div class="result-badges" id="result-badges"></div>
         <div class="streak-row center">
           <span class="chip" id="chip-streak-result">🔥 streak 0</span>
         </div>
