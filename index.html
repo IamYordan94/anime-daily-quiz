@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>Anime Daily — quiz of the day</title>
+  <meta name="description" content="Daily anime quiz. 5 questions. Prove you're the real otaku." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎌</text></svg>" />
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app" id="app">
+
+    <!-- ══════════ MASTHEAD ══════════ -->
+    <header class="masthead">
+      <div class="mast-stickers">
+        <span class="sticker sticker-pink">🎌 ANIME</span>
+        <span class="sticker sticker-yellow">⭐ DAILY</span>
+      </div>
+      <div class="ticker-wrap">
+        <div class="ticker" id="ticker">
+          NEW PUZZLE EVERY DAY • 5 QUESTIONS • PROVE YOU'RE THE REAL OTAKU • SHARE YOUR SCORE • COME BACK TOMORROW •&nbsp;
+        </div>
+      </div>
+    </header>
+
+    <!-- ══════════ SCREEN: HOME ══════════ -->
+    <section class="screen screen-active" id="screen-home">
+      <div class="card hero-card">
+        <div class="hero-title">ANIME<br /><span class="hero-title-accent">DAILY</span></div>
+        <p class="hero-sub">5 questions. One shot per day.<br />Wrong answers sting. Hints cost an ad.</p>
+        <div class="streak-row">
+          <span class="chip" id="chip-streak">🔥 streak 0</span>
+          <span class="chip" id="chip-today">📅 today: loading…</span>
+        </div>
+        <button class="btn btn-big" id="btn-start">START TODAY'S QUIZ →</button>
+        <p class="fine-print" id="already-done" hidden>You already played today — replay for fun, streak won't double-count.</p>
+      </div>
+      <p class="footer-note">opens best inside <a id="tg-link" href="https://t.me/anime_daily_quiz_bot" target="_blank">Telegram</a> 🚀</p>
+    </section>
+
+    <!-- ══════════ SCREEN: QUIZ ══════════ -->
+    <section class="screen" id="screen-quiz">
+      <div class="quiz-top">
+        <span class="chip" id="chip-progress">Q 1/5</span>
+        <span class="chip chip-accent" id="chip-score">✓ 0</span>
+      </div>
+      <div class="card q-card">
+        <div class="q-tier" id="q-tier">TIER 1</div>
+        <div class="q-text" id="q-text">Question…</div>
+      </div>
+      <div class="options" id="options"></div>
+      <div class="hint-zone">
+        <button class="btn btn-hint" id="btn-hint">🪄 GET A HINT</button>
+        <p class="hint-text" id="hint-text" hidden></p>
+      </div>
+    </section>
+
+    <!-- ══════════ SCREEN: RESULT ══════════ -->
+    <section class="screen" id="screen-result">
+      <div class="card result-card">
+        <div class="result-big" id="result-big">3/5</div>
+        <div class="result-grid" id="result-grid"></div>
+        <div class="result-line" id="result-line">Not bad…</div>
+        <div class="streak-row center">
+          <span class="chip" id="chip-streak-result">🔥 streak 0</span>
+        </div>
+        <button class="btn btn-big" id="btn-copy">📋 COPY RESULT</button>
+        <p class="fine-print" id="copy-ok" hidden>Copied! Paste it in any group 🎌</p>
+        <div class="countdown" id="countdown">next puzzle in …</div>
+      </div>
+      <button class="btn btn-ghost" id="btn-replay">↺ replay today (no extra streak)</button>
+      <p class="footer-note">share your score. humiliate your friends.</p>
+    </section>
+
+  </div>
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
