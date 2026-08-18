@@ -37,7 +37,7 @@ function hashStr(s) {
 
 /* ── daily puzzle selection ──────────────────────────── */
 
-const TIER_RAMP = [1, 2, 3, 4, 5]; // easy → hard
+const TIER_RAMP = [1, 1, 2, 2, 3, 3, 4, 4, 5, 5]; // two per tier, easy → hard
 
 function pickDailyPuzzle(questions, dateStr) {
   const rnd = mulberry32(hashStr('anime-daily:' + dateStr));
@@ -213,8 +213,8 @@ function finish() {
 
   const lines = [
     score === total ? 'OTAKU SUPREME! All correct.' :
-    score >= total - 1 ? 'So close. So painful.' :
-    score >= 3 ? 'Solid. But the weeb council is watching.' :
+    score >= total - 2 ? 'So close. So painful.' :
+    score >= Math.ceil(total / 2) ? 'Solid. But the weeb council is watching.' :
     'The anime gods are disappointed.',
   ];
 
